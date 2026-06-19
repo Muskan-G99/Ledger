@@ -55,7 +55,7 @@ export default function InvestmentsModule({ holdings, onImport }) {
         <Card
           title="Holdings"
           className="lg:col-span-2"
-          action={<ImportButton label="Import Robinhood CSV" onFile={handleFile} />}
+          action={<ImportButton label="Import Robinhood CSV(s)" onFile={handleFile} />}
         >
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">

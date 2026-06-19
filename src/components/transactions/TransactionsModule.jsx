@@ -6,8 +6,8 @@ import ImportButton from '../ui/ImportButton'
 import { parseTransactionsCSV } from '../../lib/csv'
 import { formatCurrency, formatDate } from '../../lib/format'
 import { CATEGORIES } from '../../lib/constants'
-import { getCard, getEffectiveRate, bestCardForTransaction } from '../../data/cards'
-import { CreditCard, Receipt, TrendingUp, CheckCircle2, ArrowRightCircle } from 'lucide-react'
+import { CARDS, getCard, getEffectiveRate, bestCardForTransaction } from '../../data/cards'
+import { CreditCard, Receipt, TrendingUp, CheckCircle2, ArrowRightCircle, Gift } from 'lucide-react'
 
 const getRecommendation = (t) => {
   const card = getCard(t.card)
@@ -22,6 +22,7 @@ const getRecommendation = (t) => {
 export default function TransactionsModule({ transactions, onImport }) {
   const [categoryFilter, setCategoryFilter] = useState('All')
   const [showSuboptimalOnly, setShowSuboptimalOnly] = useState(false)
+  const [importCard, setImportCard] = useState(CARDS[0].id)
 
   const filtered = useMemo(() => {
     let list = categoryFilter === 'All' ? transactions : transactions.filter((t) => t.category === categoryFilter)
@@ -36,18 +37,27 @@ export default function TransactionsModule({ transactions, onImport }) {
     return Object.entries(totals).sort((a, b) => b[1] - a[1])[0]
   }, [transactions])
 
+  const rewardsEarned = useMemo(
+    () =>
+      transactions.reduce((sum, t) => {
+        const card = getCard(t.card)
+        return card ? sum + t.amount * (getEffectiveRate(card, t) / 100) : sum
+      }, 0),
+    [transactions],
+  )
+
   const missedRewards = useMemo(
     () => transactions.reduce((sum, t) => sum + getRecommendation(t).extra, 0),
     [transactions],
   )
 
   const handleFile = (file) => {
-    parseTransactionsCSV(file, (rows) => onImport(rows))
+    parseTransactionsCSV(file, importCard, (rows) => onImport(rows))
   }
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <StatCard label="Total Tracked Spend" value={formatCurrency(totalSpent)} icon={Receipt} />
         <StatCard label="Transactions" value={transactions.length} icon={CreditCard} />
         <StatCard
@@ -55,6 +65,13 @@ export default function TransactionsModule({ transactions, onImport }) {
           value={topCategory?.[0] ?? '—'}
           sublabel={topCategory ? formatCurrency(topCategory[1]) : ''}
           icon={TrendingUp}
+        />
+        <StatCard
+          label="Total Rewards Earned"
+          value={formatCurrency(rewardsEarned)}
+          sublabel="Across all cards"
+          icon={Gift}
+          tone="positive"
         />
         <StatCard
           label="Missed Rewards"
@@ -88,7 +105,19 @@ export default function TransactionsModule({ transactions, onImport }) {
                 <option key={c}>{c}</option>
               ))}
             </select>
-            <ImportButton label="Import CSV" onFile={handleFile} />
+            <select
+              value={importCard}
+              onChange={(e) => setImportCard(e.target.value)}
+              title="Card these imported statements belong to"
+              className="rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-slate-600"
+            >
+              {CARDS.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.shortName}
+                </option>
+              ))}
+            </select>
+            <ImportButton label="Import CSV(s)" onFile={handleFile} />
           </div>
         }
       >

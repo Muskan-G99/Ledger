@@ -17,7 +17,9 @@ const pick = (row, keys) => {
   return undefined
 }
 
-export const parseTransactionsCSV = (file, onComplete) => {
+const importId = (i) => `import-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 8)}`
+
+export const parseTransactionsCSV = (file, cardId, onComplete) => {
   Papa.parse(file, {
     header: true,
     skipEmptyLines: true,
@@ -32,12 +34,12 @@ export const parseTransactionsCSV = (file, onComplete) => {
           const amount = Math.abs(parseFloat(String(amountRaw).replace(/[^0-9.-]/g, '')))
           const category = CATEGORIES.includes(categoryRaw) ? categoryRaw : guessCategory(description)
           return {
-            id: `import-${Date.now()}-${i}`,
+            id: importId(i),
             date,
             merchant: description,
             amount,
             category,
-            card: 'imported',
+            card: cardId || 'imported',
           }
         })
         .filter(Boolean)
@@ -59,7 +61,7 @@ export const parseInvestmentsCSV = (file, onComplete) => {
           const price = pick(row, ['price', 'last price', 'current price'])
           if (!symbol || shares === undefined) return null
           return {
-            id: `import-${Date.now()}-${i}`,
+            id: importId(i),
             symbol: symbol.toUpperCase(),
             name: symbol.toUpperCase(),
             shares: parseFloat(shares),
