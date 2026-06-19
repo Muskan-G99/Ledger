@@ -6,14 +6,14 @@ import ImportButton from '../ui/ImportButton'
 import { parseTransactionsCSV } from '../../lib/csv'
 import { formatCurrency, formatDate } from '../../lib/format'
 import { CATEGORIES } from '../../lib/constants'
-import { getCard, bestCardForCategory } from '../../data/cards'
+import { getCard, getEffectiveRate, bestCardForTransaction } from '../../data/cards'
 import { CreditCard, Receipt, TrendingUp, CheckCircle2, ArrowRightCircle } from 'lucide-react'
 
 const getRecommendation = (t) => {
   const card = getCard(t.card)
-  const best = bestCardForCategory(t.category)
-  const actualRate = card?.rates[t.category] ?? 0
-  const bestRate = best.rates[t.category]
+  const best = bestCardForTransaction(t)
+  const actualRate = card ? getEffectiveRate(card, t) : 0
+  const bestRate = getEffectiveRate(best, t)
   const isOptimal = actualRate >= bestRate
   const extra = isOptimal ? 0 : t.amount * ((bestRate - actualRate) / 100)
   return { card, best, isOptimal, extra }

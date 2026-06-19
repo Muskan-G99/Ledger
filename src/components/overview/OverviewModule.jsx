@@ -98,7 +98,7 @@ export default function OverviewModule({ transactions, holdings, onNavigate }) {
       </div>
 
       <Card title="Best Card to Use, by Category">
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-7">
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-8">
           {CATEGORIES.map((cat) => {
             const best = bestCardForCategory(cat)
             return (
