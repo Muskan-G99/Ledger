@@ -17,7 +17,7 @@ const MERCHANTS = {
   Other: ['Venmo Transfer', 'CVS Pharmacy', 'Local ATM Fee', 'Misc Purchase'],
 }
 
-const CARD_IDS = ['csp', 'amex-gold', 'citi-cc', 'discover-it', 'cap1-qs']
+const CARD_IDS = ['amex-gold', 'robinhood-gold', 'citi-costco', 'discover-it', 'apple-card']
 const CATEGORIES = Object.keys(MERCHANTS)
 
 const AMOUNT_RANGES = {

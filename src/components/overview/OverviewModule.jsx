@@ -104,7 +104,7 @@ export default function OverviewModule({ transactions, holdings, onNavigate }) {
             return (
               <div key={cat} className="rounded-lg border border-slate-200 p-3 text-center">
                 <p className="text-xs text-slate-400">{cat}</p>
-                <p className="mt-1 text-sm font-semibold text-slate-800">{best.name.split(' ').slice(-1)}</p>
+                <p className="mt-1 text-sm font-semibold text-slate-800">{best.shortName}</p>
                 <p className="text-xs font-medium text-emerald-600">{best.rates[cat]}% back</p>
               </div>
             )
