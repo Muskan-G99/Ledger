@@ -7,13 +7,11 @@ import RewardsModule from './components/rewards/RewardsModule'
 import InvestmentsModule from './components/investments/InvestmentsModule'
 import PaycheckModule from './components/paycheck/PaycheckModule'
 import SpendingModule from './components/spending/SpendingModule'
-import { MOCK_TRANSACTIONS } from './data/transactions'
-import { MOCK_HOLDINGS } from './data/investments'
 
 function App() {
   const [active, setActive] = useState('overview')
-  const [transactions, setTransactions] = useState(MOCK_TRANSACTIONS)
-  const [holdings, setHoldings] = useState(MOCK_HOLDINGS)
+  const [transactions, setTransactions] = useState([])
+  const [holdings, setHoldings] = useState([])
 
   const handleImportTransactions = (rows) => setTransactions((prev) => [...rows, ...prev])
   const handleImportHoldings = (rows) => setHoldings((prev) => [...prev, ...rows])
