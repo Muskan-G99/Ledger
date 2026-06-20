@@ -4,14 +4,24 @@ import { guessCategory } from './csv'
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl
 
-// A line starts with a date, then has a description, then ends with a dollar
-// amount (optionally followed by trailing junk like a reference number or a
-// running-balance column). We grab the LAST amount-looking token on the line
-// rather than anchoring to the end of the string, since real statement PDFs
-// often have a stray column or page artifact after the transaction amount.
-const DATE_PREFIX_RE = /^(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)\s+(.*)$/
-const AMOUNT_RE = /-?\$?\s?[\d,]+\.\d{2}\s*(CR)?/gi
+// Amex (and similar) statements lay each transaction out as a small block of
+// lines rather than a single row: date + merchant on the first line, an
+// all-caps category tag on the next, then (for foreign-currency purchases) a
+// local-currency amount and currency name, and finally the USD amount on its
+// own line, e.g.:
+//   12/18/25 AplPay THE COFFEE CLUB ARRIVAL BADUNG - BALI
+//   RESTAURANT
+//    340,999.00
+//   Indonesian Rupiahs
+//   $20.41 *
+// We anchor on lines that start with a date, then scan forward a few lines
+// for the first literal "$" amount (requiring the $ avoids mistaking the
+// bare foreign-currency number for the transaction amount).
+const DATE_LINE_RE = /^(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)\s*\*?\s+(.*)$/
+const AMOUNT_RE = /(-)?\$\s?([\d,]+\.\d{2})\s*(CR)?/i
 const SKIP_RE = /autopay|payment.*thank you|electronic payment|statement credit/i
+const BLOCK_LOOKAHEAD = 6
+const MAX_DAYS_FROM_CLOSING = 100
 
 const toISODate = (raw, refYear, refMonth) => {
   const [month, day, yearPart] = raw.split('/').map((p) => parseInt(p, 10))
@@ -22,13 +32,12 @@ const toISODate = (raw, refYear, refMonth) => {
   } else if (year < 100) {
     year += 2000
   }
-  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+  return { iso: `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`, year, month, day }
 }
 
 // Groups text items into visual lines by y-position. PDF generators don't
-// always emit perfectly identical y-coordinates for items on the same row
-// (font baseline jitter), so nearby y-values are clustered together rather
-// than requiring an exact match.
+// always emit identical y-coordinates for items on the same row (font
+// baseline jitter), so nearby y-values are clustered together.
 const groupIntoLines = (items) => {
   const sorted = [...items].sort((a, b) => b.transform[5] - a.transform[5])
   const rows = []
@@ -71,35 +80,51 @@ export const parseTransactionsPDF = async (file, cardId, onComplete) => {
   const refMatch = closingMatch || anyDateMatch
   const refYear = refMatch ? parseInt(refMatch[3], 10) : new Date().getFullYear()
   const refMonth = refMatch ? parseInt(refMatch[1], 10) : null
+  const refDay = refMatch ? parseInt(refMatch[2], 10) : null
+  const closingDate = refMonth ? new Date(refYear, refMonth - 1, refDay) : null
 
-  const rows = lines
-    .map((line, i) => {
-      const dateMatch = line.match(DATE_PREFIX_RE)
-      if (!dateMatch) return null
-      const [, dateRaw, rest] = dateMatch
+  const rows = []
+  for (let i = 0; i < lines.length; i++) {
+    const dateMatch = lines[i].match(DATE_LINE_RE)
+    if (!dateMatch) continue
+    const [, dateRaw, firstRest] = dateMatch
 
-      const amountMatches = [...rest.matchAll(AMOUNT_RE)]
-      if (!amountMatches.length) return null
-      const lastAmount = amountMatches[amountMatches.length - 1]
-      const amountRaw = lastAmount[0]
-      const isCredit = Boolean(lastAmount[1]) || amountRaw.trim().startsWith('-')
-
-      const description = rest.slice(0, lastAmount.index).trim()
-      if (!description || SKIP_RE.test(description) || isCredit) return null
-
-      const amount = Math.abs(parseFloat(amountRaw.replace(/[^0-9.-]/g, '')))
-      if (!amount) return null
-
-      return {
-        id: `import-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 8)}`,
-        date: toISODate(dateRaw, refYear, refMonth),
-        merchant: description,
-        amount,
-        category: guessCategory(description),
-        card: cardId || 'imported',
+    let amountMatch = null
+    const descParts = [firstRest]
+    for (let j = i; j < Math.min(i + BLOCK_LOOKAHEAD, lines.length); j++) {
+      const text = j === i ? firstRest : lines[j]
+      if (j > i && DATE_LINE_RE.test(lines[j])) break
+      const m = text.match(AMOUNT_RE)
+      if (m) {
+        amountMatch = m
+        break
       }
+      if (j > i && descParts.length < 2) descParts.push(text)
+    }
+    if (!amountMatch) continue
+
+    const description = descParts.join(' ').replace(/\s+/g, ' ').trim()
+    const isCredit = Boolean(amountMatch[1]) || Boolean(amountMatch[3])
+    if (!description || SKIP_RE.test(description) || isCredit) continue
+
+    const amount = Math.abs(parseFloat(amountMatch[2].replace(/,/g, '')))
+    if (!amount) continue
+
+    const { iso, year, month, day } = toISODate(dateRaw, refYear, refMonth)
+    if (closingDate) {
+      const daysDiff = Math.abs((new Date(year, month - 1, day) - closingDate) / 86400000)
+      if (daysDiff > MAX_DAYS_FROM_CLOSING) continue
+    }
+
+    rows.push({
+      id: `import-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 8)}`,
+      date: iso,
+      merchant: description,
+      amount,
+      category: guessCategory(description),
+      card: cardId || 'imported',
     })
-    .filter(Boolean)
+  }
 
   if (rows.length === 0) {
     console.warn(`[parseTransactionsPDF] "${file.name}": extracted ${lines.length} text lines, matched 0 transactions.`, lines)
