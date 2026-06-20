@@ -4,6 +4,25 @@ import { guessCategory } from './csv'
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl
 
+// Safari doesn't implement the ReadableStream async-iterator protocol, which
+// pdfjs-dist relies on internally (`for await (const value of readableStream)`
+// in Page.getTextContent). Without this, every PDF import fails on Safari with
+// a cryptic "undefined is not a function (near '...value of readableStream...')".
+if (typeof ReadableStream !== 'undefined' && !ReadableStream.prototype[Symbol.asyncIterator]) {
+  ReadableStream.prototype[Symbol.asyncIterator] = async function* () {
+    const reader = this.getReader()
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) return
+        yield value
+      }
+    } finally {
+      reader.releaseLock()
+    }
+  }
+}
+
 // Amex (and similar) statements lay each transaction out as a small block of
 // lines rather than a single row: date + merchant on the first line, an
 // all-caps category tag on the next, then (for foreign-currency purchases) a
