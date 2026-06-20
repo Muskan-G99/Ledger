@@ -134,11 +134,17 @@ export const parseTransactionsPDF = async (file, cardId, onComplete) => {
       .replace(/[\d,]+\.\d{2}\s*$/, '')
       .replace(/\s+/g, ' ')
       .trim()
-    const isCredit = Boolean(amountMatch[1]) || Boolean(amountMatch[3])
-    if (!description || SKIP_RE.test(description) || isCredit) continue
+    // SKIP_RE catches payments toward your bill (autopay, "thank you", etc.) -
+    // those aren't spend or anti-spend, just you paying down what you owe, so
+    // they're dropped entirely. A credit that *isn't* a bill payment is a
+    // merchant refund/credit (e.g. a return), which we keep as a negative
+    // amount so it nets back out of the category it was originally spent in.
+    if (!description || SKIP_RE.test(description)) continue
 
-    const amount = Math.abs(parseFloat(amountMatch[2].replace(/,/g, '')))
-    if (!amount) continue
+    const isCredit = Boolean(amountMatch[1]) || Boolean(amountMatch[3])
+    const magnitude = Math.abs(parseFloat(amountMatch[2].replace(/,/g, '')))
+    if (!magnitude) continue
+    const amount = isCredit ? -magnitude : magnitude
 
     const { iso, year, month, day } = toISODate(dateRaw, refYear, refMonth)
     if (closingDate) {

@@ -157,6 +157,7 @@ export default function TransactionsModule({ transactions, onImport }) {
             <tbody>
               {filtered.map((t) => {
                 const isIncome = t.category === 'Income'
+                const isCredit = t.amount < 0
                 const { card, best, isOptimal, extra } = getRecommendation(t)
                 const source = card ?? getAccount(t.card)
                 return (
@@ -168,13 +169,13 @@ export default function TransactionsModule({ transactions, onImport }) {
                       <Badge category={t.category} />
                     </td>
                     <td
-                      className={`py-2.5 pr-4 text-right font-medium ${isIncome ? 'text-emerald-600' : 'text-slate-800'}`}
+                      className={`py-2.5 pr-4 text-right font-medium ${isIncome ? 'text-emerald-600' : isCredit ? 'text-amber-600' : 'text-slate-800'}`}
                     >
                       {isIncome ? '+' : ''}
                       {formatCurrency(t.amount)}
                     </td>
                     <td className="py-2.5 pr-4">
-                      {isIncome ? (
+                      {isIncome || isCredit ? (
                         <span className="text-xs text-slate-400">—</span>
                       ) : isOptimal ? (
                         <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-600">

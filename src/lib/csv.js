@@ -1,5 +1,11 @@
 import Papa from 'papaparse'
 import { CATEGORIES, CATEGORY_KEYWORDS } from './constants'
+import { getCard } from '../data/cards'
+
+// Bill payments (autopay, "thank you for your payment", etc.) aren't spend or
+// anti-spend - they're just you paying down what you owe - so they're dropped
+// entirely rather than counted as either a charge or a refund.
+const SKIP_RE = /autopay|payment.*thank you|electronic payment|statement credit/i
 
 export const guessCategory = (description = '') => {
   const desc = description.toLowerCase()
@@ -20,6 +26,14 @@ const pick = (row, keys) => {
 export const importId = (i) => `import-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 8)}`
 
 export const parseTransactionsCSV = (file, cardId, onComplete) => {
+  // Credit card exports use a single signed "amount" column: charges are
+  // positive, payments/credits are negative. Bank exports tend to do the
+  // opposite for ordinary debits, so for those we keep the existing
+  // always-positive behavior and rely on description-based Income detection
+  // instead. Preserving the credit-card sign convention lets genuine
+  // merchant refunds net back out of the category they were spent in,
+  // rather than getting counted as a duplicate charge.
+  const isCreditCard = Boolean(getCard(cardId))
   Papa.parse(file, {
     header: true,
     skipEmptyLines: true,
@@ -30,8 +44,10 @@ export const parseTransactionsCSV = (file, cardId, onComplete) => {
           const description = pick(row, ['description', 'merchant', 'name'])
           const amountRaw = pick(row, ['amount', 'debit'])
           const categoryRaw = pick(row, ['category'])
-          if (!date || !description || amountRaw === undefined) return null
-          const amount = Math.abs(parseFloat(String(amountRaw).replace(/[^0-9.-]/g, '')))
+          if (!date || !description || amountRaw === undefined || SKIP_RE.test(description)) return null
+          const parsed = parseFloat(String(amountRaw).replace(/[^0-9.-]/g, ''))
+          const amount = isCreditCard ? parsed : Math.abs(parsed)
+          if (!amount) return null
           const category = CATEGORIES.includes(categoryRaw) ? categoryRaw : guessCategory(description)
           return {
             id: importId(i),
