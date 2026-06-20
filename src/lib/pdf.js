@@ -4,12 +4,13 @@ import { guessCategory } from './csv'
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl
 
-// Matches a single-amount-column statement line: "06/15/24  AMAZON.COM  45.67"
-// optionally trailed by "CR" for credits/payments. Statements with a running
-// balance column (most bank checking PDFs) put a second number at the end of
-// the line and won't reliably match this pattern - those should be imported
-// via CSV instead.
-const LINE_RE = /^(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)\s+(.+?)\s+(-?\$?\s?[\d,]+\.\d{2})\s*(CR)?$/i
+// A line starts with a date, then has a description, then ends with a dollar
+// amount (optionally followed by trailing junk like a reference number or a
+// running-balance column). We grab the LAST amount-looking token on the line
+// rather than anchoring to the end of the string, since real statement PDFs
+// often have a stray column or page artifact after the transaction amount.
+const DATE_PREFIX_RE = /^(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)\s+(.*)$/
+const AMOUNT_RE = /-?\$?\s?[\d,]+\.\d{2}\s*(CR)?/gi
 const SKIP_RE = /autopay|payment.*thank you|electronic payment|statement credit/i
 
 const toISODate = (raw, refYear, refMonth) => {
@@ -24,26 +25,35 @@ const toISODate = (raw, refYear, refMonth) => {
   return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
 }
 
+// Groups text items into visual lines by y-position. PDF generators don't
+// always emit perfectly identical y-coordinates for items on the same row
+// (font baseline jitter), so nearby y-values are clustered together rather
+// than requiring an exact match.
+const groupIntoLines = (items) => {
+  const sorted = [...items].sort((a, b) => b.transform[5] - a.transform[5])
+  const rows = []
+  sorted.forEach((item) => {
+    const y = item.transform[5]
+    const row = rows.find((r) => Math.abs(r.y - y) < 3)
+    if (row) row.items.push(item)
+    else rows.push({ y, items: [item] })
+  })
+  return rows.map((row) =>
+    row.items
+      .sort((a, b) => a.transform[4] - b.transform[4])
+      .map((i) => i.str)
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .trim(),
+  )
+}
+
 const extractLines = async (pdf) => {
   const lines = []
   for (let p = 1; p <= pdf.numPages; p++) {
     const page = await pdf.getPage(p)
     const content = await page.getTextContent()
-    const rows = new Map()
-    content.items.forEach((item) => {
-      const y = Math.round(item.transform[5])
-      if (!rows.has(y)) rows.set(y, [])
-      rows.get(y).push(item)
-    })
-    const sortedY = [...rows.keys()].sort((a, b) => b - a)
-    sortedY.forEach((y) => {
-      const line = rows
-        .get(y)
-        .sort((a, b) => a.transform[4] - b.transform[4])
-        .map((i) => i.str)
-        .join(' ')
-        .replace(/\s+/g, ' ')
-        .trim()
+    groupIntoLines(content.items).forEach((line) => {
       if (line) lines.push(line)
     })
   }
@@ -64,13 +74,22 @@ export const parseTransactionsPDF = async (file, cardId, onComplete) => {
 
   const rows = lines
     .map((line, i) => {
-      const m = line.match(LINE_RE)
-      if (!m) return null
-      const [, dateRaw, descriptionRaw, amountRaw, creditFlag] = m
-      const description = descriptionRaw.trim()
-      if (SKIP_RE.test(description) || creditFlag || amountRaw.trim().startsWith('-')) return null
+      const dateMatch = line.match(DATE_PREFIX_RE)
+      if (!dateMatch) return null
+      const [, dateRaw, rest] = dateMatch
+
+      const amountMatches = [...rest.matchAll(AMOUNT_RE)]
+      if (!amountMatches.length) return null
+      const lastAmount = amountMatches[amountMatches.length - 1]
+      const amountRaw = lastAmount[0]
+      const isCredit = Boolean(lastAmount[1]) || amountRaw.trim().startsWith('-')
+
+      const description = rest.slice(0, lastAmount.index).trim()
+      if (!description || SKIP_RE.test(description) || isCredit) return null
+
       const amount = Math.abs(parseFloat(amountRaw.replace(/[^0-9.-]/g, '')))
       if (!amount) return null
+
       return {
         id: `import-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 8)}`,
         date: toISODate(dateRaw, refYear, refMonth),
@@ -81,6 +100,10 @@ export const parseTransactionsPDF = async (file, cardId, onComplete) => {
       }
     })
     .filter(Boolean)
+
+  if (rows.length === 0) {
+    console.warn(`[parseTransactionsPDF] "${file.name}": extracted ${lines.length} text lines, matched 0 transactions.`, lines)
+  }
 
   onComplete(rows)
 }

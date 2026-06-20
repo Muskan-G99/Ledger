@@ -58,11 +58,21 @@ export default function TransactionsModule({ transactions, onImport }) {
 
   const handleFile = async (file) => {
     const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
-    if (isPdf) {
-      const { parseTransactionsPDF } = await import('../../lib/pdf')
-      parseTransactionsPDF(file, importSource, (rows) => onImport(rows))
-    } else {
-      parseTransactionsCSV(file, importSource, (rows) => onImport(rows))
+    try {
+      if (isPdf) {
+        const { parseTransactionsPDF } = await import('../../lib/pdf')
+        await parseTransactionsPDF(file, importSource, (rows) => {
+          if (rows.length === 0) {
+            alert(`No transactions found in "${file.name}". This PDF's layout may not match the expected pattern - check the browser console for the extracted text, or try exporting a CSV instead.`)
+          }
+          onImport(rows)
+        })
+      } else {
+        parseTransactionsCSV(file, importSource, (rows) => onImport(rows))
+      }
+    } catch (err) {
+      console.error(`Failed to import "${file.name}"`, err)
+      alert(`Failed to import "${file.name}": ${err.message}`)
     }
   }
 
