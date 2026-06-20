@@ -23,19 +23,18 @@ if (typeof ReadableStream !== 'undefined' && !ReadableStream.prototype[Symbol.as
   }
 }
 
-// Amex (and similar) statements lay each transaction out as a small block of
-// lines rather than a single row: date + merchant on the first line, an
-// all-caps category tag on the next, then (for foreign-currency purchases) a
-// local-currency amount and currency name, and finally the USD amount on its
-// own line, e.g.:
-//   12/18/25 AplPay THE COFFEE CLUB ARRIVAL BADUNG - BALI
-//   RESTAURANT
-//    340,999.00
+// Amex (and similar) statements usually put the whole transaction on one
+// line, including a bare foreign-currency figure for overseas purchases, with
+// the category tag and currency name following on their own line(s) after:
+//   12/18/25 AplPay THE COFFEE CLUB ARRIVAL BADUNG - BALI 340,999.00 $20.41 *
 //   Indonesian Rupiahs
-//   $20.41 *
+//   RESTAURANT
+// Occasionally a statement instead wraps the amount onto a following line.
 // We anchor on lines that start with a date, then scan forward a few lines
 // for the first literal "$" amount (requiring the $ avoids mistaking the
-// bare foreign-currency number for the transaction amount).
+// bare foreign-currency number for the transaction amount), then strip
+// everything from that amount onward (plus any leftover foreign-currency
+// figure right before it) to get a clean merchant description.
 const DATE_LINE_RE = /^(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)\s*\*?\s+(.*)$/
 const AMOUNT_RE = /(-)?\$\s?([\d,]+\.\d{2})\s*(CR)?/i
 const SKIP_RE = /autopay|payment.*thank you|electronic payment|statement credit/i
@@ -94,10 +93,11 @@ export const parseTransactionsPDF = async (file, cardId, onComplete) => {
   const lines = await extractLines(pdf)
   const fullText = lines.join('\n')
 
-  const closingMatch = fullText.match(/closing date[:\s]*(\d{1,2})\/(\d{1,2})\/(\d{4})/i)
-  const anyDateMatch = fullText.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/)
+  const closingMatch = fullText.match(/closing date[:\s]*(\d{1,2})\/(\d{1,2})\/(\d{2,4})/i)
+  const anyDateMatch = fullText.match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/)
   const refMatch = closingMatch || anyDateMatch
-  const refYear = refMatch ? parseInt(refMatch[3], 10) : new Date().getFullYear()
+  let refYear = refMatch ? parseInt(refMatch[3], 10) : new Date().getFullYear()
+  if (refYear < 100) refYear += 2000
   const refMonth = refMatch ? parseInt(refMatch[1], 10) : null
   const refDay = refMatch ? parseInt(refMatch[2], 10) : null
   const closingDate = refMonth ? new Date(refYear, refMonth - 1, refDay) : null
@@ -109,6 +109,7 @@ export const parseTransactionsPDF = async (file, cardId, onComplete) => {
     const [, dateRaw, firstRest] = dateMatch
 
     let amountMatch = null
+    let amountIndexInFirst = null
     const descParts = [firstRest]
     for (let j = i; j < Math.min(i + BLOCK_LOOKAHEAD, lines.length); j++) {
       const text = j === i ? firstRest : lines[j]
@@ -116,13 +117,23 @@ export const parseTransactionsPDF = async (file, cardId, onComplete) => {
       const m = text.match(AMOUNT_RE)
       if (m) {
         amountMatch = m
+        if (j === i) amountIndexInFirst = m.index
         break
       }
       if (j > i && descParts.length < 2) descParts.push(text)
     }
     if (!amountMatch) continue
 
-    const description = descParts.join(' ').replace(/\s+/g, ' ').trim()
+    // When the $ amount sits on the same line as the merchant (the common
+    // case), drop everything from the amount onward, including any leftover
+    // foreign-currency figure that preceded it (e.g. "340,999.00 $20.41 ⧫").
+    if (amountIndexInFirst !== null) descParts[0] = firstRest.slice(0, amountIndexInFirst)
+
+    const description = descParts
+      .join(' ')
+      .replace(/[\d,]+\.\d{2}\s*$/, '')
+      .replace(/\s+/g, ' ')
+      .trim()
     const isCredit = Boolean(amountMatch[1]) || Boolean(amountMatch[3])
     if (!description || SKIP_RE.test(description) || isCredit) continue
 
