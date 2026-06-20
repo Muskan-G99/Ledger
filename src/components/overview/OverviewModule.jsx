@@ -9,19 +9,21 @@ import { CATEGORIES } from '../../lib/constants'
 import { CreditCard, Gift, TrendingUp, Wallet } from 'lucide-react'
 
 export default function OverviewModule({ transactions, holdings, onNavigate }) {
+  const spendTransactions = useMemo(() => transactions.filter((t) => t.category !== 'Income'), [transactions])
+
   const totalSpend30d = useMemo(() => {
     const cutoff = new Date('2026-06-19')
     cutoff.setDate(cutoff.getDate() - 30)
-    return transactions.filter((t) => new Date(t.date) >= cutoff).reduce((sum, t) => sum + t.amount, 0)
-  }, [transactions])
+    return spendTransactions.filter((t) => new Date(t.date) >= cutoff).reduce((sum, t) => sum + t.amount, 0)
+  }, [spendTransactions])
 
   const rewardsEarned = useMemo(
     () =>
-      transactions.reduce((sum, t) => {
+      spendTransactions.reduce((sum, t) => {
         const card = getCard(t.card)
         return card ? sum + t.amount * (card.rates[t.category] / 100) : sum
       }, 0),
-    [transactions],
+    [spendTransactions],
   )
 
   const portfolioValue = useMemo(() => holdings.reduce((sum, h) => sum + h.shares * h.currentPrice, 0), [holdings])
@@ -32,13 +34,13 @@ export default function OverviewModule({ transactions, holdings, onNavigate }) {
 
   const monthlyTrend = useMemo(() => {
     const byMonth = {}
-    transactions.forEach((t) => {
+    spendTransactions.forEach((t) => {
       const key = t.date.slice(0, 7)
       byMonth[key] = byMonth[key] || { key, month: formatMonth(t.date), total: 0 }
       byMonth[key].total += t.amount
     })
     return Object.values(byMonth).sort((a, b) => a.key.localeCompare(b.key))
-  }, [transactions])
+  }, [spendTransactions])
 
   const recentTransactions = transactions.slice(0, 5)
 

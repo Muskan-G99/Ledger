@@ -7,7 +7,10 @@ import { parseTransactionsCSV } from '../../lib/csv'
 import { formatCurrency, formatDate } from '../../lib/format'
 import { CATEGORIES } from '../../lib/constants'
 import { CARDS, getCard, getEffectiveRate, bestCardForTransaction } from '../../data/cards'
+import { BANK_ACCOUNTS, getAccount } from '../../data/accounts'
 import { CreditCard, Receipt, TrendingUp, CheckCircle2, ArrowRightCircle, Gift } from 'lucide-react'
+
+const IMPORT_SOURCES = [...CARDS, ...BANK_ACCOUNTS]
 
 const getRecommendation = (t) => {
   const card = getCard(t.card)
@@ -22,7 +25,7 @@ const getRecommendation = (t) => {
 export default function TransactionsModule({ transactions, onImport }) {
   const [categoryFilter, setCategoryFilter] = useState('All')
   const [showSuboptimalOnly, setShowSuboptimalOnly] = useState(false)
-  const [importCard, setImportCard] = useState(CARDS[0].id)
+  const [importSource, setImportSource] = useState(IMPORT_SOURCES[0].id)
 
   const filtered = useMemo(() => {
     let list = categoryFilter === 'All' ? transactions : transactions.filter((t) => t.category === categoryFilter)
@@ -30,29 +33,37 @@ export default function TransactionsModule({ transactions, onImport }) {
     return list
   }, [transactions, categoryFilter, showSuboptimalOnly])
 
-  const totalSpent = useMemo(() => transactions.reduce((sum, t) => sum + t.amount, 0), [transactions])
+  const spendTransactions = useMemo(() => transactions.filter((t) => t.category !== 'Income'), [transactions])
+
+  const totalSpent = useMemo(() => spendTransactions.reduce((sum, t) => sum + t.amount, 0), [spendTransactions])
   const topCategory = useMemo(() => {
     const totals = {}
-    transactions.forEach((t) => (totals[t.category] = (totals[t.category] ?? 0) + t.amount))
+    spendTransactions.forEach((t) => (totals[t.category] = (totals[t.category] ?? 0) + t.amount))
     return Object.entries(totals).sort((a, b) => b[1] - a[1])[0]
-  }, [transactions])
+  }, [spendTransactions])
 
   const rewardsEarned = useMemo(
     () =>
-      transactions.reduce((sum, t) => {
+      spendTransactions.reduce((sum, t) => {
         const card = getCard(t.card)
         return card ? sum + t.amount * (getEffectiveRate(card, t) / 100) : sum
       }, 0),
-    [transactions],
+    [spendTransactions],
   )
 
   const missedRewards = useMemo(
-    () => transactions.reduce((sum, t) => sum + getRecommendation(t).extra, 0),
-    [transactions],
+    () => spendTransactions.reduce((sum, t) => sum + getRecommendation(t).extra, 0),
+    [spendTransactions],
   )
 
-  const handleFile = (file) => {
-    parseTransactionsCSV(file, importCard, (rows) => onImport(rows))
+  const handleFile = async (file) => {
+    const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
+    if (isPdf) {
+      const { parseTransactionsPDF } = await import('../../lib/pdf')
+      parseTransactionsPDF(file, importSource, (rows) => onImport(rows))
+    } else {
+      parseTransactionsCSV(file, importSource, (rows) => onImport(rows))
+    }
   }
 
   return (
@@ -106,18 +117,18 @@ export default function TransactionsModule({ transactions, onImport }) {
               ))}
             </select>
             <select
-              value={importCard}
-              onChange={(e) => setImportCard(e.target.value)}
-              title="Card these imported statements belong to"
+              value={importSource}
+              onChange={(e) => setImportSource(e.target.value)}
+              title="Card or bank account these imported statements belong to"
               className="rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-slate-600"
             >
-              {CARDS.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.shortName}
+              {IMPORT_SOURCES.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.shortName}
                 </option>
               ))}
             </select>
-            <ImportButton label="Import CSV(s)" onFile={handleFile} />
+            <ImportButton label="Import CSV/PDF(s)" accept=".csv,.pdf" onFile={handleFile} />
           </div>
         }
       >
@@ -135,18 +146,27 @@ export default function TransactionsModule({ transactions, onImport }) {
             </thead>
             <tbody>
               {filtered.map((t) => {
+                const isIncome = t.category === 'Income'
                 const { card, best, isOptimal, extra } = getRecommendation(t)
+                const source = card ?? getAccount(t.card)
                 return (
                   <tr key={t.id} className="border-b border-slate-50 last:border-0">
                     <td className="py-2.5 pr-4 text-slate-500">{formatDate(t.date)}</td>
                     <td className="py-2.5 pr-4 font-medium text-slate-800">{t.merchant}</td>
-                    <td className="py-2.5 pr-4 text-slate-500">{card ? card.name : 'Imported'}</td>
+                    <td className="py-2.5 pr-4 text-slate-500">{source ? source.name : 'Imported'}</td>
                     <td className="py-2.5 pr-4">
                       <Badge category={t.category} />
                     </td>
-                    <td className="py-2.5 pr-4 text-right font-medium text-slate-800">{formatCurrency(t.amount)}</td>
+                    <td
+                      className={`py-2.5 pr-4 text-right font-medium ${isIncome ? 'text-emerald-600' : 'text-slate-800'}`}
+                    >
+                      {isIncome ? '+' : ''}
+                      {formatCurrency(t.amount)}
+                    </td>
                     <td className="py-2.5 pr-4">
-                      {isOptimal ? (
+                      {isIncome ? (
+                        <span className="text-xs text-slate-400">—</span>
+                      ) : isOptimal ? (
                         <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-600">
                           <CheckCircle2 className="h-3.5 w-3.5" />
                           Optimal

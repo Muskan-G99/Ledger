@@ -18,8 +18,11 @@ export const CATEGORY_COLORS = {
   Entertainment: '#a855f7',
   Utilities: '#eab308',
   Other: '#64748b',
+  Income: '#16a34a',
 }
 
+// 'Income' is intentionally not in CATEGORIES above: it's a bank-deposit
+// classification, not a spend category cards earn rewards rates on.
 export const CATEGORY_KEYWORDS = {
   Food: ['doordash', 'ubereats', 'grubhub', 'restaurant', 'starbucks', 'chipotle', 'mcdonald', 'cafe', 'pizza', 'sushi', 'taco', 'dining', 'bar', 'chick-fil-a'],
   Travel: ['united', 'delta', 'southwest', 'airbnb', 'hotel', 'marriott', 'hilton', 'uber', 'lyft', 'airlines', 'expedia', 'rental car', 'parking'],
@@ -28,4 +31,5 @@ export const CATEGORY_KEYWORDS = {
   Shopping: ['amazon', 'target', 'walmart', 'best buy', 'nike', 'sephora', 'macy', 'nordstrom', 'ikea'],
   Entertainment: ['netflix', 'spotify', 'hulu', 'amc', 'movie', 'concert', 'ticketmaster', 'disney+', 'steam', 'hbo'],
   Utilities: ['electric', 'water bill', 'gas company', 'internet', 'comcast', 'at&t', 'verizon', 'pg&e', 'utility', 'phone bill'],
+  Income: ['bugcrowd', 'payroll', 'direct dep', 'salary', 'paycheck', 'ach credit'],
 }

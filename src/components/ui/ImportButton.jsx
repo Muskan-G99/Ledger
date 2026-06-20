@@ -1,7 +1,7 @@
 import { Upload } from 'lucide-react'
 import { useRef } from 'react'
 
-export default function ImportButton({ label = 'Import CSV', onFile, multiple = true }) {
+export default function ImportButton({ label = 'Import CSV', onFile, multiple = true, accept = '.csv' }) {
   const inputRef = useRef(null)
 
   const handleChange = (e) => {
@@ -22,7 +22,7 @@ export default function ImportButton({ label = 'Import CSV', onFile, multiple = 
       <input
         ref={inputRef}
         type="file"
-        accept=".csv"
+        accept={accept}
         multiple={multiple}
         className="hidden"
         onChange={handleChange}

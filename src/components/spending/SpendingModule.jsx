@@ -20,9 +20,11 @@ import { formatCurrency, formatMonth } from '../../lib/format'
 import { CalendarDays, TrendingDown, TrendingUp } from 'lucide-react'
 
 export default function SpendingModule({ transactions }) {
+  const spendTransactions = useMemo(() => transactions.filter((t) => t.category !== 'Income'), [transactions])
+
   const monthly = useMemo(() => {
     const byMonth = {}
-    transactions.forEach((t) => {
+    spendTransactions.forEach((t) => {
       const key = t.date.slice(0, 7)
       if (!byMonth[key]) {
         byMonth[key] = { key, month: formatMonth(t.date), total: 0 }
@@ -32,7 +34,7 @@ export default function SpendingModule({ transactions }) {
       byMonth[key].total += t.amount
     })
     return Object.values(byMonth).sort((a, b) => a.key.localeCompare(b.key))
-  }, [transactions])
+  }, [spendTransactions])
 
   const currentMonth = monthly[monthly.length - 1]
   const previousMonth = monthly[monthly.length - 2]
@@ -109,8 +111,8 @@ export default function SpendingModule({ transactions }) {
         <Card title="Category Totals (All Time)">
           <div className="flex flex-col gap-3">
             {CATEGORIES.map((cat) => {
-              const total = transactions.filter((t) => t.category === cat).reduce((s, t) => s + t.amount, 0)
-              const max = Math.max(...CATEGORIES.map((c) => transactions.filter((t) => t.category === c).reduce((s, t) => s + t.amount, 0)))
+              const total = spendTransactions.filter((t) => t.category === cat).reduce((s, t) => s + t.amount, 0)
+              const max = Math.max(...CATEGORIES.map((c) => spendTransactions.filter((t) => t.category === c).reduce((s, t) => s + t.amount, 0)))
               const pct = max === 0 ? 0 : (total / max) * 100
               return (
                 <div key={cat}>

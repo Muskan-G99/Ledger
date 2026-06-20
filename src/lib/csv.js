@@ -17,7 +17,7 @@ const pick = (row, keys) => {
   return undefined
 }
 
-const importId = (i) => `import-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 8)}`
+export const importId = (i) => `import-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 8)}`
 
 export const parseTransactionsCSV = (file, cardId, onComplete) => {
   Papa.parse(file, {
@@ -26,7 +26,7 @@ export const parseTransactionsCSV = (file, cardId, onComplete) => {
     complete: (results) => {
       const rows = results.data
         .map((row, i) => {
-          const date = pick(row, ['transaction date', 'date', 'posted date'])
+          const date = pick(row, ['transaction date', 'date', 'posted date', 'posting date'])
           const description = pick(row, ['description', 'merchant', 'name'])
           const amountRaw = pick(row, ['amount', 'debit'])
           const categoryRaw = pick(row, ['category'])
